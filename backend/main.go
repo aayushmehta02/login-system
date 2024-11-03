@@ -2,28 +2,27 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/handlers"
+	"github.com/golang-jwt/jwt"
 	"github.com/joho/godotenv"
 )
 
 type User struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
-	EmpName    string `json:"empName,omitempty"`
-	EmpAge     int    `json:"empAge,omitempty"`
-	Department string `json:"Department,omitempty"`
+	EmpName    string `json:"empName"`
+	EmpAge     int    `json:"empAge"`
+	Department string `json:"Department"`
 }
 
-var jwtSecret = []byte("your_secret_key") // Replace with a secure key
+var jwtKey = []byte("your_secret_key")
 
 func main() {
 	// Load environment variables
@@ -40,59 +39,50 @@ func main() {
 	}
 	defer db.Close()
 
-	// CORS setup
-	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "POST", "OPTIONS"})
-	originsOk := handlers.AllowedOrigins([]string{"http://localhost:3000"})
+	// Initialize Gin router
+	r := gin.Default()
 
-	// Registration handler
-	http.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
+	// Define the handler for registration
+	r.POST("/api/register", func(c *gin.Context) {
 		var user User
-		err := json.NewDecoder(r.Body).Decode(&user)
-		if err != nil {
-			http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		if err := c.ShouldBindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
 			return
 		}
 
 		query := "INSERT INTO divine_users (username, password, empName, empAge, Department) VALUES (?, ?, ?, ?, ?)"
 		_, err = db.Exec(query, user.Username, user.Password, user.EmpName, user.EmpAge, user.Department)
 		if err != nil {
-			http.Error(w, "Error inserting data into database", http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error inserting data into database"})
 			return
 		}
 
-		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("User registered successfully"))
+		// Generate JWT token
+		tokenString, err := generateJWT(user.Username)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully", "token": tokenString})
 	})
 
 	// Login handler
-	http.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
+	r.POST("/api/login", func(c *gin.Context) {
 		var user User
-		err := json.NewDecoder(r.Body).Decode(&user)
-		if err != nil {
-			http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		if err := c.ShouldBindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
 			return
 		}
 
-		// Check user credentials
 		var storedPassword string
-		err = db.QueryRow("SELECT password FROM divine_users WHERE username = ?", user.Username).Scan(&storedPassword)
+		err := db.QueryRow("SELECT password FROM divine_users WHERE username = ?", user.Username).Scan(&storedPassword)
 		if err != nil {
-			http.Error(w, "User not found", http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			return
 		}
 		if storedPassword != user.Password {
-			http.Error(w, "Invalid password", http.StatusUnauthorized)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 			return
 		}
 
@@ -101,27 +91,39 @@ func main() {
 			"username": user.Username,
 			"exp":      time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
 		})
-		tokenString, err := token.SignedString(jwtSecret)
+		tokenString, err := token.SignedString(jwtKey)
 		if err != nil {
-			http.Error(w, "Error generating token", http.StatusInternalServerError)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+		c.JSON(http.StatusOK, gin.H{"token": tokenString})
 	})
-
-	// Wrap handler with CORS
-	corsHandler := handlers.CORS(originsOk, headersOk, methodsOk)(http.DefaultServeMux)
 
 	// Start server
 	port := os.Getenv("BACKEND_PORT")
 	if port == "" {
-		port = "8000"
+		port = "8000" // Default port if not specified
 	}
 	fmt.Println("Server running on port " + port)
-	err = http.ListenAndServe(":"+port, corsHandler)
+	err = r.Run(":" + port) // Start server
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// Function to generate JWT
+func generateJWT(username string) (string, error) {
+	claims := &jwt.StandardClaims{
+		Subject:   username,
+		ExpiresAt: time.Now().Add(time.Hour * 72).Unix(), // Token expires after 72 hours
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtKey)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
 }
