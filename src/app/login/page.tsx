@@ -1,5 +1,3 @@
-
-
 "use client"; 
 
 import { useState } from 'react';
@@ -7,18 +5,45 @@ import { useState } from 'react';
 export default function Login(): JSX.Element {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Handle login logic here (e.g., API call)
-    console.log('Email:', email);
-    console.log('Password:', password);
+    setErrorMessage(''); // Clear any previous error
+
+    try {
+      const response = await fetch('http://localhost:8000/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: email, password }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const token = data.token;
+        
+        // Store token in local storage
+        localStorage.setItem('token', token);
+
+        // Redirect user or perform further actions here
+        console.log('Login successful');
+      } else {
+        const errorData = await response.json();
+        setErrorMessage(errorData.message || 'Login failed');
+      }
+    } catch (error) {
+      setErrorMessage('An error occurred during login. Please try again.');
+      console.error('Error:', error);
+    }
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-sm p-8 bg-white rounded-lg shadow-md">
         <h1 className="mb-6 text-2xl font-bold text-center">Login</h1>
+        {errorMessage && <p className="mb-4 text-red-500 text-sm">{errorMessage}</p>}
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label htmlFor="email" className="block mb-2 text-sm font-medium text-gray-700">Email:</label>
