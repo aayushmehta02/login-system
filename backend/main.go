@@ -15,11 +15,21 @@ import (
 )
 
 type User struct {
-	Username   string `json:"username"`
-	Password   string `json:"password"`
-	EmpName    string `json:"empName"`
-	EmpAge     int    `json:"empAge"`
-	Department string `json:"Department"`
+	Username   string    `json:"username"`
+	Password   string    `json:"password"`
+	FirstName  string    `json:"firstName"`
+	MiddleName string    `json:"middleName"`
+	LastName   string    `json:"lastName"`
+	ContactNo  string    `json:"contactNo"`
+	Email      string    `json:"email"`
+	DOB        time.Time `json:"dob"` // Use string or time.Time for date
+	Address    string    `json:"address"`
+	State      string    `json:"state"`
+	City       string    `json:"city"`
+	Pin        string    `json:"pin"`
+	Aadhar     string    `json:"aadhar"`
+	Pan        string    `json:"pan"`
+	Active     bool      `json:"active"` // true for active, false for inactive
 }
 
 var jwtKey = []byte("your_secret_key")
@@ -41,6 +51,7 @@ func main() {
 
 	// Initialize Gin router
 	r := gin.Default()
+	r.Use(CORSMiddleware())
 
 	// Define the handler for registration
 	r.POST("/api/register", func(c *gin.Context) {
@@ -50,8 +61,14 @@ func main() {
 			return
 		}
 
-		query := "INSERT INTO divine_users (username, password, empName, empAge, Department) VALUES (?, ?, ?, ?, ?)"
-		_, err = db.Exec(query, user.Username, user.Password, user.EmpName, user.EmpAge, user.Department)
+		query := `INSERT INTO divine_users (
+            username, password, firstName, middleName, lastName, contactNo,
+            email, dob, address, state, city, pin, aadhar, pan, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		_, err = db.Exec(
+			query, user.Username, user.Password, user.FirstName, user.MiddleName, user.LastName,
+			user.ContactNo, user.Email, user.DOB, user.Address, user.State, user.City,
+			user.Pin, user.Aadhar, user.Pan, user.Active,
+		)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error inserting data into database"})
 			return
@@ -76,7 +93,7 @@ func main() {
 		}
 
 		var storedPassword string
-		err := db.QueryRow("SELECT password FROM divine_users WHERE username = ?", user.Username).Scan(&storedPassword)
+		err := db.QueryRow("SELECT password FROM divine_users WHERE email = ?", user.Email).Scan(&storedPassword)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			return
@@ -126,4 +143,19 @@ func generateJWT(username string) (string, error) {
 	}
 
 	return tokenString, nil
+}
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent) // Handle preflight requests
+			return
+		}
+
+		c.Next()
+	}
 }
