@@ -1,4 +1,4 @@
-
+"use client"
 
 import NavBar from '@/component/Navabar';
 export default function Home() {

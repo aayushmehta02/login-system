@@ -9,11 +9,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        background: "var(--foreground)",
+        foreground: "var(--background)",
+        black: "#000000", // Ensure black is defined
+      },
+      textColor: {
+        DEFAULT: "#000000", // Set default text color to black
       },
     },
   },
   plugins: [],
 };
+
 export default config;
